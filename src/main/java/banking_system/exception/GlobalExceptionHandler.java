@@ -1,4 +1,3 @@
-
 package banking_system.exception;
 
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -11,9 +10,30 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(AccountNotFoundException.class)
+    public ResponseEntity<?> handleAccountNotFound(AccountNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", ex.getMessage()
+        ));
+    }
+
+    @ExceptionHandler(InsufficientBalanceException.class)
+    public ResponseEntity<?> handleInsufficientBalance(InsufficientBalanceException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "error", ex.getMessage()
+        ));
+    }
+
+    @ExceptionHandler(DuplicateTransactionException.class)
+    public ResponseEntity<?> handleDuplicateTransaction(DuplicateTransactionException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                "error", ex.getMessage()
+        ));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<?> handleBadRequest(IllegalArgumentException ex) {
-        return ResponseEntity.badRequest().body(Map.of(
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                 "error", ex.getMessage()
         ));
     }

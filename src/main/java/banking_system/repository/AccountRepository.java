@@ -1,6 +1,7 @@
 
 package banking_system.repository;
-
+import java.math.BigDecimal;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -144,28 +145,143 @@ public class AccountRepository {
 
     // Save transaction record
     public void saveTransaction(
-            String transactionUuid,
-            Long accountId,
-            String transactionType,
-            java.math.BigDecimal amount,
-            String status,
-            String description
-    ) {
-        String sql = """
-                INSERT INTO banking_transactions
-                (transaction_uuid, account_id, transaction_type,
-                 amount, status, description)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """;
+        String transactionUuid,
+        String operationUuid,
+        Long accountId,
+        String transactionType,
+        BigDecimal amount,
+        String status,
+        String description) {
 
-        jdbcTemplate.update(
-                sql,
-                transactionUuid,
-                accountId,
-                transactionType,
-                amount,
-                status,
-                description
+    String sql = """
+            INSERT INTO banking_transactions
+            (transaction_uuid, operation_uuid, account_id,
+             transaction_type, amount, status, description)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """;
+
+    jdbcTemplate.update(
+            sql,
+            transactionUuid,
+            operationUuid,
+            accountId,
+            transactionType,
+            amount,
+            status,
+            description
+    );
+}
+
+    public void saveAudit(
+        String transactionUuid,
+        Long accountId,
+        String action,
+        String details) {
+
+    String sql = """
+            INSERT INTO transaction_audit
+            (transaction_uuid, account_id, action, details)
+            VALUES (?, ?, ?, ?)
+            """;
+
+    jdbcTemplate.update(sql, transactionUuid, accountId, action, details);
+}
+
+public void saveFailedTransaction(
+        String transactionUuid,
+        Long accountId,
+        String transactionType,
+        BigDecimal amount,
+        String failureReason) {
+
+    String sql = """
+            INSERT INTO failed_transactions
+            (transaction_uuid, account_id, transaction_type, amount, failure_reason)
+            VALUES (?, ?, ?, ?, ?)
+            """;
+
+    jdbcTemplate.update(
+            sql,
+            transactionUuid,
+            accountId,
+            transactionType,
+            amount,
+            failureReason
+    );
+}
+
+
+/**
+ * Atomically reserves a transaction UUID.
+ * The database primary key prevents duplicate reservations.
+ */
+public void reserveTransactionUuid(
+        String transactionUuid,
+        String transactionType) {
+
+    String sql = """
+            INSERT INTO transaction_requests
+            (transaction_uuid, transaction_type, status)
+            VALUES (?, ?, 'PROCESSING')
+            """;
+
+    jdbcTemplate.update(
+            sql,
+            transactionUuid,
+            transactionType
+    );
+}
+
+public void markTransactionCompleted(String transactionUuid) {
+
+    String sql = """
+            UPDATE transaction_requests
+            SET status = 'COMPLETED'
+            WHERE transaction_uuid = ?
+            """;
+
+    int rowsUpdated = jdbcTemplate.update(sql, transactionUuid);
+
+    if (rowsUpdated != 1) {
+        throw new IllegalStateException(
+                "Transaction reservation not found: " + transactionUuid
         );
     }
+}
+
+public void lockAccount(Long accountId) {
+
+    String sql = """
+            SELECT account_id
+            FROM accounts
+            WHERE account_id = ?
+            FOR UPDATE
+            """;
+
+    var accountIds = jdbcTemplate.queryForList(
+            sql,
+            Long.class,
+            accountId
+    );
+
+    if (accountIds.isEmpty()) {
+        throw new banking_system.exception.AccountNotFoundException(
+                accountId
+        );
+    }
+}
+
+public void reserveTransactionUuidSafely(
+        String transactionUuid,
+        String transactionType) {
+
+    try {
+        reserveTransactionUuid(transactionUuid, transactionType);
+    } catch (org.springframework.dao.DuplicateKeyException ex) {
+        throw new banking_system.exception.TransactionReservationConflictException(
+                transactionUuid, ex);
+    }
+}
+
+
 }
