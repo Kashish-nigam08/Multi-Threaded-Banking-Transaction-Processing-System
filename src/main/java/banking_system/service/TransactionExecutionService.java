@@ -3,7 +3,6 @@ package banking_system.service;
 
 import banking_system.dto.TransactionRequest;
 import banking_system.dto.TransferRequest;
-import banking_system.exception.AccountNotFoundException;
 import banking_system.exception.InsufficientBalanceException;
 import banking_system.repository.AccountRepository;
 
@@ -12,9 +11,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 @Service
 public class TransactionExecutionService {
-
+    private static final Logger log =
+        LoggerFactory.getLogger(TransactionExecutionService.class);
     private final AccountRepository repository;
 
     public TransactionExecutionService(AccountRepository repository) {
@@ -24,12 +26,16 @@ public class TransactionExecutionService {
     @Transactional
     public BigDecimal deposit(TransactionRequest request) {
 
-        repository.reserveTransactionUuidSafely(
-                request.getTransactionUuid(), "DEPOSIT");
 
-        if (!repository.accountExists(request.getAccountId())) {
-            throw new AccountNotFoundException(request.getAccountId());
-        }
+repository.reserveTransactionUuidSafely(
+        request.getTransactionUuid(), "DEPOSIT");
+log.info(
+        "Deposit started | transactionUuid={} | accountId={}",
+        request.getTransactionUuid(),
+        request.getAccountId()
+);
+repository.validateActiveAccount(request.getAccountId());
+
 
         int updated = repository.deposit(
                 request.getAccountId(), request.getAmount());
@@ -58,19 +64,27 @@ repository.saveTransaction(
         );
 
         repository.markTransactionCompleted(request.getTransactionUuid());
-
+        log.info(
+        "Deposit completed | transactionUuid={} | accountId={}",
+        request.getTransactionUuid(),
+        request.getAccountId()
+);
         return repository.getBalance(request.getAccountId());
     }
 
     @Transactional
     public BigDecimal withdraw(TransactionRequest request) {
 
-        repository.reserveTransactionUuidSafely(
-                request.getTransactionUuid(), "WITHDRAWAL");
 
-        if (!repository.accountExists(request.getAccountId())) {
-            throw new AccountNotFoundException(request.getAccountId());
-        }
+repository.reserveTransactionUuidSafely(
+        request.getTransactionUuid(), "WITHDRAWAL");
+log.info(
+        "Withdrawal started | transactionUuid={} | accountId={}",
+        request.getTransactionUuid(),
+        request.getAccountId()
+);
+repository.validateActiveAccount(request.getAccountId());
+
 
         int updated = repository.withdraw(
                 request.getAccountId(), request.getAmount());
@@ -99,7 +113,11 @@ repository.saveTransaction(
         );
 
         repository.markTransactionCompleted(request.getTransactionUuid());
-
+        log.info(
+        "Withdrawal completed | transactionUuid={} | accountId={}",
+        request.getTransactionUuid(),
+        request.getAccountId()
+);
         return repository.getBalance(request.getAccountId());
     }
 
@@ -108,7 +126,12 @@ repository.saveTransaction(
 
         repository.reserveTransactionUuidSafely(
                 request.getTransactionUuid(), "TRANSFER");
-
+log.info(
+        "Transfer started | transactionUuid={} | sender={} | receiver={}",
+        request.getTransactionUuid(),
+        request.getSenderAccountId(),
+        request.getReceiverAccountId()
+);
 
 Long sender = request.getSenderAccountId();
 Long receiver = request.getReceiverAccountId();
@@ -119,6 +142,9 @@ Long secondAccount = Math.max(sender, receiver);
 
 repository.lockAccount(firstAccount);
 repository.lockAccount(secondAccount);
+
+repository.validateActiveAccount(sender);
+repository.validateActiveAccount(receiver);
 
 
         int debited = repository.withdraw(sender, request.getAmount());
@@ -172,5 +198,11 @@ repository.saveTransaction(
         );
 
         repository.markTransactionCompleted(request.getTransactionUuid());
+    log.info(
+        "Transfer completed | transactionUuid={} | sender={} | receiver={}",
+        request.getTransactionUuid(),
+        request.getSenderAccountId(),
+        request.getReceiverAccountId()
+);
     }
 }

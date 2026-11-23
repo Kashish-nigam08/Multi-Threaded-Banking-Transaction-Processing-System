@@ -58,5 +58,23 @@ public class TransactionController {
                 "newBalance", balance
         ));
     }
+
+@GetMapping("/account/{accountId}")
+public ResponseEntity<?> getTransactionHistory(
+        @PathVariable Long accountId,
+        @RequestParam(defaultValue = "0") int page,
+        @RequestParam(defaultValue = "10") int size,
+        @RequestParam(required = false) String type) {
+
+    return ResponseEntity.ok(
+            bankingService.getTransactionHistory(
+                    accountId,
+                    type,
+                    page,
+                    size
+            )
+    );
+}
+
 }
 

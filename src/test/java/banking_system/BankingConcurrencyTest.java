@@ -3,6 +3,7 @@ package banking_system;
 
 import banking_system.dto.AccountRequest;
 import banking_system.dto.TransactionRequest;
+import banking_system.exception.AccountInactiveException;
 import banking_system.exception.DuplicateTransactionException;
 import banking_system.exception.InsufficientBalanceException;
 import banking_system.service.BankingService;
@@ -560,6 +561,271 @@ void failedWithdrawalCanBeRetriedWithSameUuid() {
     );
 
     assertEquals(1, failureCount);
+}
+
+
+@Test
+void depositIntoInactiveAccountShouldFail() {
+
+    // Use an account created specifically for this test.
+    Long accountId = createTestAccount();
+
+    BigDecimal balanceBefore =
+            accountRepository.getBalance(accountId);
+
+    accountRepository.updateAccountStatus(accountId, "INACTIVE");
+
+    TransactionRequest request = new TransactionRequest();
+    request.setAccountId(accountId);
+    request.setAmount(new BigDecimal("500.00"));
+    request.setTransactionUuid(UUID.randomUUID().toString());
+
+    assertThrows(
+            AccountInactiveException.class,
+            () -> bankingService.deposit(request)
+    );
+
+    BigDecimal balanceAfter =
+            accountRepository.getBalance(accountId);
+
+    assertEquals(0, balanceBefore.compareTo(balanceAfter));
+}
+
+
+@Test
+void withdrawalFromInactiveAccountShouldFail() {
+
+    Long accountId = createTestAccount();
+
+    bankingService.deposit(transactionRequest(
+            accountId,
+            new BigDecimal("1000.00"),
+            UUID.randomUUID().toString()
+    ));
+
+    accountRepository.updateAccountStatus(accountId, "INACTIVE");
+
+    assertThrows(
+            AccountInactiveException.class,
+            () -> bankingService.withdraw(transactionRequest(
+                    accountId,
+                    new BigDecimal("300.00"),
+                    UUID.randomUUID().toString()
+            ))
+    );
+
+    assertEquals(
+            0,
+            bankingService.getBalance(accountId)
+                    .compareTo(new BigDecimal("1000.00"))
+    );
+}
+
+@Test
+void transferFromInactiveSenderShouldFail() {
+
+    Long sender = createTestAccount();
+    Long receiver = createTestAccount();
+
+    bankingService.deposit(transactionRequest(
+            sender,
+            new BigDecimal("1000.00"),
+            UUID.randomUUID().toString()
+    ));
+
+    accountRepository.updateAccountStatus(sender, "INACTIVE");
+
+    assertThrows(
+            AccountInactiveException.class,
+            () -> bankingService.transfer(transferRequest(
+                    sender,
+                    receiver,
+                    new BigDecimal("300.00"),
+                    UUID.randomUUID().toString()
+            ))
+    );
+
+    assertEquals(
+            0,
+            bankingService.getBalance(sender)
+                    .compareTo(new BigDecimal("1000.00"))
+    );
+
+    assertEquals(
+            0,
+            bankingService.getBalance(receiver)
+                    .compareTo(BigDecimal.ZERO)
+    );
+}
+
+@Test
+void transferToInactiveReceiverShouldFail() {
+
+    Long sender = createTestAccount();
+    Long receiver = createTestAccount();
+
+    bankingService.deposit(transactionRequest(
+            sender,
+            new BigDecimal("1000.00"),
+            UUID.randomUUID().toString()
+    ));
+
+    accountRepository.updateAccountStatus(receiver, "INACTIVE");
+
+    assertThrows(
+            AccountInactiveException.class,
+            () -> bankingService.transfer(transferRequest(
+                    sender,
+                    receiver,
+                    new BigDecimal("300.00"),
+                    UUID.randomUUID().toString()
+            ))
+    );
+
+    assertEquals(
+            0,
+            bankingService.getBalance(sender)
+                    .compareTo(new BigDecimal("1000.00"))
+    );
+
+    assertEquals(
+            0,
+            bankingService.getBalance(receiver)
+                    .compareTo(BigDecimal.ZERO)
+    );
+}
+
+@Test
+void reactivatedAccountShouldAllowDeposits() {
+
+    Long accountId = createTestAccount();
+
+    accountRepository.updateAccountStatus(accountId, "INACTIVE");
+
+    assertThrows(
+            AccountInactiveException.class,
+            () -> bankingService.deposit(transactionRequest(
+                    accountId,
+                    new BigDecimal("500.00"),
+                    UUID.randomUUID().toString()
+            ))
+    );
+
+    accountRepository.updateAccountStatus(accountId, "ACTIVE");
+
+    bankingService.deposit(transactionRequest(
+            accountId,
+            new BigDecimal("500.00"),
+            UUID.randomUUID().toString()
+    ));
+
+    assertEquals(
+            0,
+            bankingService.getBalance(accountId)
+                    .compareTo(new BigDecimal("500.00"))
+    );
+}
+
+@Test
+void inactiveDepositCanBeRetriedWithSameUuid() {
+
+    Long accountId = createTestAccount();
+
+    String operationUuid = UUID.randomUUID().toString();
+
+    accountRepository.updateAccountStatus(accountId, "INACTIVE");
+
+    assertThrows(
+            AccountInactiveException.class,
+            () -> bankingService.deposit(transactionRequest(
+                    accountId,
+                    new BigDecimal("400.00"),
+                    operationUuid
+            ))
+    );
+
+    // The failed transaction reservation should roll back.
+    Integer reservationCount = jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM transaction_requests
+            WHERE transaction_uuid = ?
+            """,
+            Integer.class,
+            operationUuid
+    );
+
+    assertEquals(0, reservationCount);
+
+    // Reactivate and retry with the same UUID.
+    accountRepository.updateAccountStatus(accountId, "ACTIVE");
+
+    bankingService.deposit(transactionRequest(
+            accountId,
+            new BigDecimal("400.00"),
+            operationUuid
+    ));
+
+    assertEquals(
+            0,
+            bankingService.getBalance(accountId)
+                    .compareTo(new BigDecimal("400.00"))
+    );
+
+    // A completed operation cannot execute twice.
+    assertThrows(
+            DuplicateTransactionException.class,
+            () -> bankingService.deposit(transactionRequest(
+                    accountId,
+                    new BigDecimal("400.00"),
+                    operationUuid
+            ))
+    );
+
+    Integer ledgerCount = jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM banking_transactions
+            WHERE operation_uuid = ?
+            """,
+            Integer.class,
+            operationUuid
+    );
+
+    assertEquals(1, ledgerCount);
+}
+
+
+@Test
+void transactionHistoryShouldSupportPagination() {
+
+    Long accountId = createTestAccount();
+
+    for (int i = 0; i < 5; i++) {
+        bankingService.deposit(transactionRequest(
+                accountId,
+                new BigDecimal("100.00"),
+                UUID.randomUUID().toString()
+        ));
+    }
+
+    var firstPage = bankingService.getTransactionHistory(
+            accountId, "DEPOSIT", 0, 2
+    );
+
+    var secondPage = bankingService.getTransactionHistory(
+            accountId, "DEPOSIT", 1, 2
+    );
+
+    assertEquals(5, firstPage.totalElements());
+    assertEquals(3, firstPage.totalPages());
+    assertEquals(2, firstPage.transactions().size());
+    assertEquals(2, secondPage.transactions().size());
+
+    assertNotEquals(
+            firstPage.transactions().get(0).getTransactionUuid(),
+            secondPage.transactions().get(0).getTransactionUuid()
+    );
 }
 
 }

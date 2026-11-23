@@ -1,6 +1,6 @@
 
 package banking_system.service;
-
+import banking_system.dto.AccountStatusRequest;
 import banking_system.dto.AccountRequest;
 import banking_system.dto.TransactionRequest;
 import banking_system.dto.TransferRequest;
@@ -13,7 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import banking_system.exception.TransactionReservationConflictException;
 import java.math.BigDecimal;
-
+import banking_system.dto.TransactionHistoryResponse;
+import banking_system.dto.PaginatedTransactionResponse;
+import java.util.List;
+import java.util.Set;
 @Service
 public class BankingService {
 
@@ -145,4 +148,118 @@ public class BankingService {
                     "Transaction UUID must contain 1 to 100 characters");
         }
     }
+
+public PaginatedTransactionResponse getTransactionHistory(
+        Long accountId,
+        String transactionType,
+        int page,
+        int size) {
+
+    if (accountId == null || accountId <= 0) {
+        throw new IllegalArgumentException(
+                "Account ID must be positive"
+        );
+    }
+
+    if (page < 0) {
+        throw new IllegalArgumentException(
+                "Page number cannot be negative"
+        );
+    }
+
+    if (size < 1 || size > 100) {
+        throw new IllegalArgumentException(
+                "Page size must be between 1 and 100"
+        );
+    }
+
+    String normalizedType = null;
+
+    if (transactionType != null && !transactionType.isBlank()) {
+        normalizedType = transactionType.trim().toUpperCase(
+                java.util.Locale.ROOT
+        );
+
+        Set<String> allowedTypes =
+                Set.of("DEPOSIT", "WITHDRAWAL", "TRANSFER");
+
+        if (!allowedTypes.contains(normalizedType)) {
+            throw new IllegalArgumentException(
+                    "Invalid transaction type: " + transactionType
+            );
+        }
+    }
+
+    if (!repository.accountExists(accountId)) {
+        throw new banking_system.exception.AccountNotFoundException(
+                accountId
+        );
+    }
+
+    long totalElements = repository.countTransactions(
+            accountId,
+            normalizedType
+    );
+
+    List<TransactionHistoryResponse> transactions =
+            repository.getTransactionHistory(
+                    accountId,
+                    normalizedType,
+                    page,
+                    size
+            );
+
+    long totalPages = totalElements / size
+            + (totalElements % size == 0 ? 0 : 1);
+
+    return new PaginatedTransactionResponse(
+            accountId,
+            page,
+            size,
+            totalElements,
+            totalPages,
+            transactions
+    );
+}
+
+@Transactional
+public void updateAccountStatus(
+        Long accountId,
+        AccountStatusRequest request) {
+
+    if (accountId == null || accountId <= 0) {
+        throw new IllegalArgumentException(
+                "Account ID must be positive"
+        );
+    }
+
+    if (request == null ||
+            request.getStatus() == null ||
+            !java.util.Set.of("ACTIVE", "INACTIVE")
+                    .contains(request.getStatus())) {
+        throw new IllegalArgumentException(
+                "Status must be ACTIVE or INACTIVE"
+        );
+    }
+
+    // Lock the account before updating its status.
+    repository.lockAccount(accountId);
+
+    repository.updateAccountStatus(
+            accountId,
+            request.getStatus()
+    );
+
+    // Record the account status change in the audit trail.
+    repository.saveAudit(
+            java.util.UUID.randomUUID().toString(),
+            accountId,
+            "ACCOUNT_STATUS_CHANGE",
+            "Account status changed to " + request.getStatus()
+    );
+}
+
+
+
+
 }

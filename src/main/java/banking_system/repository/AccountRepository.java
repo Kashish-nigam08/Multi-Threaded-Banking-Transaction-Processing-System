@@ -4,7 +4,8 @@ import java.math.BigDecimal;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
-
+import banking_system.dto.TransactionHistoryResponse;
+import java.util.List;
 @Repository
 public class AccountRepository {
 
@@ -280,6 +281,163 @@ public void reserveTransactionUuidSafely(
     } catch (org.springframework.dao.DuplicateKeyException ex) {
         throw new banking_system.exception.TransactionReservationConflictException(
                 transactionUuid, ex);
+    }
+}
+
+public List<TransactionHistoryResponse> getTransactionHistory(
+        Long accountId,
+        String transactionType,
+        int page,
+        int size) {
+
+    StringBuilder sql = new StringBuilder("""
+        SELECT transaction_uuid,
+               operation_uuid,
+               account_id,
+               transaction_type,
+               amount,
+               status,
+               description,
+               created_at
+        FROM banking_transactions
+        WHERE account_id = ?
+        """);
+
+    List<Object> params = new java.util.ArrayList<>();
+    params.add(accountId);
+
+    if (transactionType != null && !transactionType.isBlank()) {
+        sql.append(" AND transaction_type = ?");
+        params.add(transactionType);
+    }
+
+    sql.append(" ORDER BY created_at DESC, transaction_id DESC");
+    sql.append(" LIMIT ? OFFSET ?");
+
+    params.add(size);
+    params.add((long) page * size);
+
+    return jdbcTemplate.query(
+            sql.toString(),
+            (rs, rowNum) -> {
+
+                TransactionHistoryResponse response =
+                        new TransactionHistoryResponse();
+
+                response.setTransactionUuid(
+                        rs.getString("transaction_uuid")
+                );
+
+                response.setOperationUuid(
+                        rs.getString("operation_uuid")
+                );
+
+                response.setAccountId(
+                        rs.getLong("account_id")
+                );
+
+                response.setTransactionType(
+                        rs.getString("transaction_type")
+                );
+
+                response.setAmount(
+                        rs.getBigDecimal("amount")
+                );
+
+                response.setStatus(
+                        rs.getString("status")
+                );
+
+                response.setDescription(
+                        rs.getString("description")
+                );
+
+                java.sql.Timestamp timestamp =
+                        rs.getTimestamp("created_at");
+
+                if (timestamp != null) {
+                    response.setCreatedAt(
+                            timestamp.toLocalDateTime()
+                    );
+                }
+
+                return response;
+            },
+            params.toArray()
+    );
+}
+
+public long countTransactions(
+        Long accountId,
+        String transactionType) {
+
+    StringBuilder sql = new StringBuilder("""
+        SELECT COUNT(*)
+        FROM banking_transactions
+        WHERE account_id = ?
+        """);
+
+    List<Object> params = new java.util.ArrayList<>();
+    params.add(accountId);
+
+    if (transactionType != null && !transactionType.isBlank()) {
+        sql.append(" AND transaction_type = ?");
+        params.add(transactionType);
+    }
+
+    Long count = jdbcTemplate.queryForObject(
+            sql.toString(),
+            Long.class,
+            params.toArray()
+    );
+
+    return count == null ? 0 : count;
+}
+
+public void validateActiveAccount(Long accountId) {
+
+    List<String> statuses = jdbcTemplate.query(
+            """
+            SELECT status
+            FROM accounts
+            WHERE account_id = ?
+            FOR UPDATE
+            """,
+            (rs, rowNum) -> rs.getString("status"),
+            accountId
+    );
+
+    if (statuses.isEmpty()) {
+        throw new banking_system.exception.AccountNotFoundException(
+                accountId
+        );
+    }
+
+    if (!"ACTIVE".equals(statuses.get(0))) {
+        throw new banking_system.exception.AccountInactiveException(
+                accountId
+        );
+    }
+}
+
+public void updateAccountStatus(
+        Long accountId,
+        String status) {
+
+    int rowsUpdated = jdbcTemplate.update(
+            """
+            UPDATE accounts
+            SET status = ?, version = version + 1
+            WHERE account_id = ?
+            """,
+            status,
+            accountId
+    );
+
+    if (rowsUpdated == 0) {
+        throw new banking_system.exception.AccountNotFoundException(
+                accountId
+        );
     }
 }
 

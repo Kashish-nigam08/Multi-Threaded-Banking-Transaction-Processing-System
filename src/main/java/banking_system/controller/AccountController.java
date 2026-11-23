@@ -12,6 +12,8 @@ import org.springframework.http.ResponseEntity;
 import java.util.Map;
 import java.math.BigDecimal;
 
+import banking_system.dto.AccountStatusRequest;
+
 @RestController
 @RequestMapping("/api/accounts")
 public class AccountController {
@@ -44,5 +46,22 @@ public class AccountController {
                 "balance", balance
         ));
     }
+
+@PatchMapping("/{accountId}/status")
+public ResponseEntity<?> updateAccountStatus(
+        @PathVariable Long accountId,
+        @Valid @RequestBody AccountStatusRequest request) {
+
+    bankingService.updateAccountStatus(accountId, request);
+
+    return ResponseEntity.ok(
+            Map.of(
+                    "message", "Account status updated successfully",
+                    "accountId", accountId,
+                    "status", request.getStatus()
+            )
+    );
+}
+
 }
 
