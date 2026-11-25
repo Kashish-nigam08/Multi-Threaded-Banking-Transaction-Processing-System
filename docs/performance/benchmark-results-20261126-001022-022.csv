@@ -1,0 +1,4 @@
+Workers,TotalOperations,Successful,Failed,ExecutionTimeSeconds,Throughput,AverageLatencyMs,P95LatencyMs,P99LatencyMs,SuccessRate
+1,5000,5000,0,84.5262,59.1532,16.8986,30.5482,38.8255,100.00
+5,5000,5000,0,10.8322,461.5853,10.5762,16.8972,25.1106,100.00
+10,5000,5000,0,9.2352,541.4058,16.8574,30.8026,58.8807,100.00
