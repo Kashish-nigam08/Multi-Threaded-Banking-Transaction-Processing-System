@@ -34,6 +34,7 @@ public class BenchmarkDataReset {
         jdbcTemplate.update("DELETE FROM banking_transactions");
         jdbcTemplate.update("DELETE FROM transaction_requests");
         jdbcTemplate.update("DELETE FROM accounts");
+        jdbcTemplate.update("DELETE FROM users");
         jdbcTemplate.update("DELETE FROM customers");
 
         System.out.println("Benchmark database reset completed.");

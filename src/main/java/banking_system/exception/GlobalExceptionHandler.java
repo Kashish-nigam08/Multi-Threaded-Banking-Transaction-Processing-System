@@ -6,16 +6,16 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-
+import banking_system.exception.DuplicateAccountException;
 import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 
@@ -54,7 +54,18 @@ public class GlobalExceptionHandler {
                 request
         );
     }
-
+    @ExceptionHandler(BadCredentialsException.class)
+public ResponseEntity<ApiErrorResponse> handleBadCredentials(
+        BadCredentialsException exception,
+        HttpServletRequest request
+) {
+    return buildErrorResponse(
+            HttpStatus.UNAUTHORIZED,
+            "INVALID_CREDENTIALS",
+            "Invalid username or password",
+            request
+    );
+}
     @ExceptionHandler(InsufficientBalanceException.class)
     public ResponseEntity<ApiErrorResponse> handleInsufficientBalance(
             InsufficientBalanceException ex,
@@ -67,7 +78,30 @@ public class GlobalExceptionHandler {
                 request
         );
     }
-
+    @ExceptionHandler(DuplicateAccountException.class)
+public ResponseEntity<ApiErrorResponse> handleDuplicateAccount(
+        DuplicateAccountException exception,
+        HttpServletRequest request
+) {
+    return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "DUPLICATE_ACCOUNT",
+            exception.getMessage(),
+            request
+    );
+}
+    @ExceptionHandler(AccessDeniedException.class)
+public ResponseEntity<ApiErrorResponse> handleAccessDenied(
+        AccessDeniedException exception,
+        HttpServletRequest request
+) {
+    return buildErrorResponse(
+            HttpStatus.FORBIDDEN,
+            "ACCESS_DENIED",
+            exception.getMessage(),
+            request
+    );
+}
     @ExceptionHandler(DuplicateTransactionException.class)
     public ResponseEntity<ApiErrorResponse> handleDuplicateTransaction(
             DuplicateTransactionException ex,
@@ -173,4 +207,16 @@ public class GlobalExceptionHandler {
                 request
         );
     }
+        @ExceptionHandler(DuplicateUserException.class)
+public ResponseEntity<ApiErrorResponse> handleDuplicateUser(
+        DuplicateUserException exception,
+        HttpServletRequest request
+) {
+    return buildErrorResponse(
+            HttpStatus.CONFLICT,
+            "DUPLICATE_USER",
+            exception.getMessage(),
+            request
+    );
+}
 }

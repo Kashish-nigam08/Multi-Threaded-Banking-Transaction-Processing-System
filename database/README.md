@@ -45,3 +45,23 @@ Database passwords must not be committed to version control. Configure credentia
 - Back up existing databases before making schema changes.
 - The schema initialization script is intended for empty databases.
 - Benchmark execution resets the benchmark database before each workload.
+## Authentication Database Migration
+
+Execute migrations/V2__create_users_table.sql
+in each database environment after initializing
+the base schema.
+
+The users table stores authentication identities,
+BCrypt password hashes, customer references,
+roles and account-enabled status.
+
+Supported roles:
+- CUSTOMER
+- ADMIN
+
+Public registration creates CUSTOMER users only.
+
+The repair_test_account_foreign_key.sql script
+is a one-time repair for existing test databases
+with a missing accounts-to-customers foreign key.
+It is not required for fresh installations.

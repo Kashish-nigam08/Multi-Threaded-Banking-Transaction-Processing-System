@@ -440,6 +440,25 @@ public void updateAccountStatus(
         );
     }
 }
+public boolean isAccountOwnedByCustomer(
+        Long accountId,
+        Long customerId
+) {
+    String sql = """
+            SELECT COUNT(*)
+            FROM accounts
+            WHERE account_id = ?
+            AND customer_id = ?
+            """;
 
+    Integer count = jdbcTemplate.queryForObject(
+            sql,
+            Integer.class,
+            accountId,
+            customerId
+    );
+
+    return count != null && count > 0;
+}
 
 }

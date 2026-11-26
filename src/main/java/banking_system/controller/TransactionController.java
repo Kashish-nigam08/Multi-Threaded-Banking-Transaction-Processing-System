@@ -2,7 +2,9 @@
 package banking_system.controller;
 
 import banking_system.dto.TransactionRequest;
+import banking_system.dto.TransferRequest;
 import banking_system.service.BankingService;
+import banking_system.security.AccountAuthorizationService;
 
 import jakarta.validation.Valid;
 
@@ -18,12 +20,26 @@ public class TransactionController {
 
     private final BankingService bankingService;
 
-    public TransactionController(BankingService bankingService) {
+    private final AccountAuthorizationService
+            accountAuthorizationService;
+
+    public TransactionController(
+            BankingService bankingService,
+            AccountAuthorizationService accountAuthorizationService
+    ) {
         this.bankingService = bankingService;
+        this.accountAuthorizationService =
+                accountAuthorizationService;
     }
 
     @PostMapping("/deposit")
-    public ResponseEntity<?> deposit(@Valid @RequestBody TransactionRequest request) {
+    public ResponseEntity<?> deposit(
+            @Valid @RequestBody TransactionRequest request
+    ) {
+
+        accountAuthorizationService.requireAccountAccess(
+                request.getAccountId()
+        );
 
         BigDecimal balance = bankingService.deposit(request);
 
@@ -33,11 +49,14 @@ public class TransactionController {
         ));
     }
 
-
     @PostMapping("/transfer")
     public ResponseEntity<?> transfer(
-            @Valid @RequestBody
-            banking_system.dto.TransferRequest request) {
+            @Valid @RequestBody TransferRequest request
+    ) {
+
+        accountAuthorizationService.requireAccountAccess(
+                request.getSenderAccountId()
+        );
 
         bankingService.transfer(request);
 
@@ -47,9 +66,14 @@ public class TransactionController {
         ));
     }
 
-
     @PostMapping("/withdraw")
-    public ResponseEntity<?> withdraw(@Valid @RequestBody TransactionRequest request) {
+    public ResponseEntity<?> withdraw(
+            @Valid @RequestBody TransactionRequest request
+    ) {
+
+        accountAuthorizationService.requireAccountAccess(
+                request.getAccountId()
+        );
 
         BigDecimal balance = bankingService.withdraw(request);
 
@@ -59,22 +83,25 @@ public class TransactionController {
         ));
     }
 
-@GetMapping("/account/{accountId}")
-public ResponseEntity<?> getTransactionHistory(
-        @PathVariable Long accountId,
-        @RequestParam(defaultValue = "0") int page,
-        @RequestParam(defaultValue = "10") int size,
-        @RequestParam(required = false) String type) {
+    @GetMapping("/account/{accountId}")
+    public ResponseEntity<?> getTransactionHistory(
+            @PathVariable Long accountId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String type
+    ) {
 
-    return ResponseEntity.ok(
-            bankingService.getTransactionHistory(
-                    accountId,
-                    type,
-                    page,
-                    size
-            )
-    );
+        accountAuthorizationService.requireAccountAccess(
+                accountId
+        );
+
+        return ResponseEntity.ok(
+                bankingService.getTransactionHistory(
+                        accountId,
+                        type,
+                        page,
+                        size
+                )
+        );
+    }
 }
-
-}
-
