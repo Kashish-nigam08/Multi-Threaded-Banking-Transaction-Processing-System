@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 
 @Component
-@Profile("benchmark")
+@Profile({"benchmark", "test"})
 public class BenchmarkConsistencyValidator {
 
     private final JdbcTemplate jdbcTemplate;
@@ -98,7 +98,94 @@ public class BenchmarkConsistencyValidator {
                     "Financial consistency validation failed"
             );
         }
-
+        validateIndividualAccountBalances();
         System.out.println("CONSISTENCY CHECK: PASSED");
     }
+
+public void validateIndividualAccountBalances() {
+
+    Long invalidDirections = jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM banking_transactions
+            WHERE transaction_type = 'TRANSFER'
+              AND status = 'SUCCESS'
+              AND (
+                  description IS NULL
+                  OR (
+                      description NOT LIKE 'Transfer to account %'
+                      AND description NOT LIKE 'Transfer from account %'
+                  )
+              )
+            """,
+            Long.class
+    );
+
+    if (invalidDirections == null || invalidDirections != 0) {
+        throw new IllegalStateException(
+                "Unrecognized transfer directions detected"
+        );
+    }
+
+    Long inconsistentAccounts = jdbcTemplate.queryForObject(
+            """
+            SELECT COUNT(*)
+            FROM (
+                SELECT
+                    a.account_id,
+                    a.balance AS actual_balance,
+
+                    COALESCE(SUM(
+                        CASE
+                            WHEN t.transaction_type = 'DEPOSIT'
+                                THEN t.amount
+
+                            WHEN t.transaction_type = 'WITHDRAWAL'
+                                THEN -t.amount
+
+                            WHEN t.transaction_type = 'TRANSFER'
+                                AND t.description LIKE
+                                    'Transfer to account %'
+                                THEN -t.amount
+
+                            WHEN t.transaction_type = 'TRANSFER'
+                                AND t.description LIKE
+                                    'Transfer from account %'
+                                THEN t.amount
+
+                            ELSE 0
+                        END
+                    ), 0) AS expected_balance
+
+                FROM accounts a
+
+                LEFT JOIN banking_transactions t
+                    ON a.account_id = t.account_id
+                    AND t.status = 'SUCCESS'
+
+                GROUP BY a.account_id, a.balance
+            ) AS reconciliation
+
+            WHERE actual_balance <> expected_balance
+            """,
+            Long.class
+    );
+
+    System.out.println(
+            "Inconsistent accounts: " + inconsistentAccounts
+    );
+
+    if (inconsistentAccounts == null
+            || inconsistentAccounts != 0) {
+
+        throw new IllegalStateException(
+                "Individual account balance reconciliation failed"
+        );
+    }
+
+    System.out.println(
+            "ACCOUNT-LEVEL RECONCILIATION: PASSED"
+    );
+}
+
 }
